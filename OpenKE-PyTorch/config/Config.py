@@ -11,83 +11,17 @@ import ctypes
 import json
 import numpy as np
 import copy
+# from .utils import Base
+from .DataReader import *
 
 def to_var(x):
     # return Variable(torch.from_numpy(x).cuda())
     return Variable(torch.from_numpy(x))
 
+
 class Config(object):
     def __init__(self):
-        base_file = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "../release/Base.so")
-        )
-        self.lib = ctypes.cdll.LoadLibrary(base_file)
-        """argtypes"""
-        """'sample"""
-        self.lib.sampling.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_int64,
-            ctypes.c_int64,
-            ctypes.c_int64,
-        ]
-        """'valid"""
-        self.lib.getValidHeadBatch.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-        ]
-        self.lib.getValidTailBatch.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-        ]
-        self.lib.validHead.argtypes = [ctypes.c_void_p]
-        self.lib.validTail.argtypes = [ctypes.c_void_p]
-        """test link prediction"""
-        self.lib.getHeadBatch.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-        ]
-        self.lib.getTailBatch.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-        ]
-        self.lib.testHead.argtypes = [ctypes.c_void_p]
-        self.lib.testTail.argtypes = [ctypes.c_void_p]
-        """test triple classification"""
-        self.lib.getValidBatch.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-        ]
-        self.lib.getTestBatch.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-        ]
-        self.lib.getBestThreshold.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-        ]
-        self.lib.test_triple_classification.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-        ]
-        """restype"""
-        self.lib.getValidHit10.restype = ctypes.c_float
+
         """set essential parameters"""
         self.in_path = "./"
         self.batch_size = 100
@@ -117,76 +51,35 @@ class Config(object):
         self.testModel = None
         self.pretrain_model = None
 
+        self.DataReader = DataReader()
+
+
     def init(self):
-        self.lib.setInPath(
-            ctypes.create_string_buffer(self.in_path.encode(), len(self.in_path) * 2)
-        )
-        self.lib.setBern(self.bern)
-        self.lib.setWorkThreads(self.work_threads)
-        self.lib.randReset()
-        self.lib.importTrainFiles()
-        self.lib.importTestFiles()
-        self.lib.importTypeFiles()
-        self.relTotal = self.lib.getRelationTotal()
-        self.entTotal = self.lib.getEntityTotal()
-        self.trainTotal = self.lib.getTrainTotal()
-        self.testTotal = self.lib.getTestTotal()
-        self.validTotal = self.lib.getValidTotal()
+
+        self.DataReader.setInPath(self.in_path)
+        self.DataReader.setBern(self.bern)
+        self.DataReader.setNegEnt(1)
+        self.DataReader.setNegRel(0)
+
+        # self.DataReader.setWorkThreads(1)
+        self.DataReader.randReset()
+        self.DataReader.importTrainFiles()
+        self.DataReader.importTestFiles()
+        self.DataReader.importTypeFiles()
+        self.relTotal = self.DataReader.getRelationTotal()
+        self.entTotal = self.DataReader.getEntityTotal()
+        self.trainTotal = self.DataReader.getTrainTotal()
+        self.testTotal = self.DataReader.getTestTotal()
+        self.validTotal = self.DataReader.getValidTotal()
 
         self.batch_size = int(self.trainTotal / self.nbatches)
+
+        self.DataReader.setBatchSize(int(self.trainTotal / self.nbatches))
+
         self.batch_seq_size = self.batch_size * (
             1 + self.negative_ent + self.negative_rel
         )
-        self.batch_h = np.zeros(self.batch_seq_size, dtype=np.int64)
-        self.batch_t = np.zeros(self.batch_seq_size, dtype=np.int64)
-        self.batch_r = np.zeros(self.batch_seq_size, dtype=np.int64)
-        self.batch_y = np.zeros(self.batch_seq_size, dtype=np.float32)
-        self.batch_h_addr = self.batch_h.__array_interface__["data"][0]
-        self.batch_t_addr = self.batch_t.__array_interface__["data"][0]
-        self.batch_r_addr = self.batch_r.__array_interface__["data"][0]
-        self.batch_y_addr = self.batch_y.__array_interface__["data"][0]
 
-        self.valid_h = np.zeros(self.entTotal, dtype=np.int64)
-        self.valid_t = np.zeros(self.entTotal, dtype=np.int64)
-        self.valid_r = np.zeros(self.entTotal, dtype=np.int64)
-        self.valid_h_addr = self.valid_h.__array_interface__["data"][0]
-        self.valid_t_addr = self.valid_t.__array_interface__["data"][0]
-        self.valid_r_addr = self.valid_r.__array_interface__["data"][0]
-
-        self.test_h = np.zeros(self.entTotal, dtype=np.int64)
-        self.test_t = np.zeros(self.entTotal, dtype=np.int64)
-        self.test_r = np.zeros(self.entTotal, dtype=np.int64)
-        self.test_h_addr = self.test_h.__array_interface__["data"][0]
-        self.test_t_addr = self.test_t.__array_interface__["data"][0]
-        self.test_r_addr = self.test_r.__array_interface__["data"][0]
-
-        self.valid_pos_h = np.zeros(self.validTotal, dtype=np.int64)
-        self.valid_pos_t = np.zeros(self.validTotal, dtype=np.int64)
-        self.valid_pos_r = np.zeros(self.validTotal, dtype=np.int64)
-        self.valid_pos_h_addr = self.valid_pos_h.__array_interface__["data"][0]
-        self.valid_pos_t_addr = self.valid_pos_t.__array_interface__["data"][0]
-        self.valid_pos_r_addr = self.valid_pos_r.__array_interface__["data"][0]
-        self.valid_neg_h = np.zeros(self.validTotal, dtype=np.int64)
-        self.valid_neg_t = np.zeros(self.validTotal, dtype=np.int64)
-        self.valid_neg_r = np.zeros(self.validTotal, dtype=np.int64)
-        self.valid_neg_h_addr = self.valid_neg_h.__array_interface__["data"][0]
-        self.valid_neg_t_addr = self.valid_neg_t.__array_interface__["data"][0]
-        self.valid_neg_r_addr = self.valid_neg_r.__array_interface__["data"][0]
-
-        self.test_pos_h = np.zeros(self.testTotal, dtype=np.int64)
-        self.test_pos_t = np.zeros(self.testTotal, dtype=np.int64)
-        self.test_pos_r = np.zeros(self.testTotal, dtype=np.int64)
-        self.test_pos_h_addr = self.test_pos_h.__array_interface__["data"][0]
-        self.test_pos_t_addr = self.test_pos_t.__array_interface__["data"][0]
-        self.test_pos_r_addr = self.test_pos_r.__array_interface__["data"][0]
-        self.test_neg_h = np.zeros(self.testTotal, dtype=np.int64)
-        self.test_neg_t = np.zeros(self.testTotal, dtype=np.int64)
-        self.test_neg_r = np.zeros(self.testTotal, dtype=np.int64)
-        self.test_neg_h_addr = self.test_neg_h.__array_interface__["data"][0]
-        self.test_neg_t_addr = self.test_neg_t.__array_interface__["data"][0]
-        self.test_neg_r_addr = self.test_neg_r.__array_interface__["data"][0]
-        self.relThresh = np.zeros(self.relTotal, dtype=np.float32)
-        self.relThresh_addr = self.relThresh.__array_interface__["data"][0]
 
     def set_test_link(self, test_link):
         self.test_link = test_link
@@ -330,15 +223,9 @@ class Config(object):
         print("Finish initializing")
 
     def sampling(self):
-        self.lib.sampling(
-            self.batch_h_addr,
-            self.batch_t_addr,
-            self.batch_r_addr,
-            self.batch_y_addr,
-            self.batch_size,
-            self.negative_ent,
-            self.negative_rel,
-        )
+
+        self.DataReader.sampling()
+
 
     def save_checkpoint(self, model, epoch):
         path = os.path.join(
@@ -351,10 +238,10 @@ class Config(object):
         torch.save(best_model, path)
 
     def train_one_step(self):
-        self.trainModel.batch_h = to_var(self.batch_h)
-        self.trainModel.batch_t = to_var(self.batch_t)
-        self.trainModel.batch_r = to_var(self.batch_r)
-        self.trainModel.batch_y = to_var(self.batch_y)
+        self.trainModel.batch_h = to_var(self.DataReader.batch_h)
+        self.trainModel.batch_t = to_var(self.DataReader.batch_t)
+        self.trainModel.batch_r = to_var(self.DataReader.batch_r)
+        self.trainModel.batch_y = to_var(self.DataReader.batch_y)
         self.optimizer.zero_grad()
         loss = self.trainModel()
         loss.backward()
@@ -365,26 +252,31 @@ class Config(object):
         model.batch_h = to_var(test_h)
         model.batch_t = to_var(test_t)
         model.batch_r = to_var(test_r)
+
+        # 这里应该搞清楚返回的数据是什么结构
         return model.predict()
 
     def valid(self, model):
-        self.lib.validInit()
+
+        # 初始化
+        self.DataReader.validInit()
+
         for i in range(self.validTotal):
             sys.stdout.write("%d\r" % (i))
             sys.stdout.flush()
-            self.lib.getValidHeadBatch(
-                self.valid_h_addr, self.valid_t_addr, self.valid_r_addr
-            )
-            res = self.test_one_step(model, self.valid_h, self.valid_t, self.valid_r)
+            # 获取验证数据
+            self.DataReader.getValidHeadBatch()
+            # print(self.DataReader.valid_h)
+            # 放入模型进行验证
+            res = self.test_one_step(model, self.DataReader.valid_h, self.DataReader.valid_t, self.DataReader.valid_r)
 
-            self.lib.validHead(res.__array_interface__["data"][0])
+            self.DataReader.validHead(res)
 
-            self.lib.getValidTailBatch(
-                self.valid_h_addr, self.valid_t_addr, self.valid_r_addr
-            )
-            res = self.test_one_step(model, self.valid_h, self.valid_t, self.valid_r)
-            self.lib.validTail(res.__array_interface__["data"][0])
-        return self.lib.getValidHit10()
+            self.DataReader.getValidTailBatch()
+            res = self.test_one_step(model, self.DataReader.valid_h, self.DataReader.valid_t, self.DataReader.valid_r)
+            self.DataReader.validTail(res)
+            
+        return self.DataReader.getValidHit10()
 
     def train(self):
         if not os.path.exists(self.checkpoint_dir):
@@ -393,23 +285,25 @@ class Config(object):
         best_hit10 = 0.0
         best_model = None
         bad_counts = 0
+
         for epoch in range(self.train_times):
+
+            start_time = time.time()
+            # 训练
             res = 0.0
             for batch in range(self.nbatches):
-
-                sampling_time = time.time()
                 self.sampling()
-                train_time = time.time()
                 loss = self.train_one_step()
-                end_time = time.time()
-                # print('e:', epoch, 'b:',batch, 'l:', loss)
-                # print('sampling cost:', train_time - sampling_time, 'train cost:', end_time - train_time)
                 res += loss
+            end_time = time.time()
+            print("Epoch %d | loss: %f | cost time: %f" % (epoch, res, end_time - start_time))
 
-            print("Epoch %d | loss: %f" % (epoch, res))
+            # 保存模型
             if (epoch + 1) % self.save_steps == 0:
                 print("Epoch %d has finished, saving..." % (epoch))
                 self.save_checkpoint(self.trainModel.state_dict(), epoch)
+
+            # 验证模型
             if (epoch + 1) % self.valid_steps == 0:
                 print("Epoch %d has finished, validating..." % (epoch))
                 hit10 = self.valid(self.trainModel)
@@ -428,6 +322,8 @@ class Config(object):
                 if bad_counts == self.early_stopping_patience:
                     print("Early stopping at epoch %d" % (epoch))
                     break
+
+        # 确定最优模型
         if best_model == None:
             best_model = self.trainModel.state_dict()
             best_epoch = self.train_times - 1
@@ -438,6 +334,8 @@ class Config(object):
             os.mkdir(self.result_dir)
         self.save_best_checkpoint(best_model)
         self.save_embedding_matrix(best_model)
+
+        # 测试
         print("Finish storing")
         print("Testing...")
         self.set_test_model(self.model)
@@ -445,67 +343,129 @@ class Config(object):
         print("Finish test")
         return best_model
 
+    def triple_classification(self):
+        self.DataReader.getValidBatch()
+        res_pos = self.test_one_step(
+            self.testModel, 
+            self.DataReader.valid_pos_h, 
+            self.DataReader.valid_pos_t, 
+            self.DataReader.valid_pos_r
+        )
+        res_neg = self.test_one_step(
+            self.testModel, 
+            self.DataReader.valid_neg_h, 
+            self.DataReader.valid_neg_t, 
+            self.DataReader.valid_neg_r
+        )
+        self.DataReader.getBestThreshold(res_pos, res_neg)
+
+        self.DataReader.getTestBatch()
+        res_pos = self.test_one_step(
+            self.testModel,
+            self.DataReader.test_pos_h, 
+            self.DataReader.test_pos_t, 
+            self.DataReader.test_pos_r
+        )
+        res_neg = self.test_one_step(
+            self.testModel, 
+            self.DataReader.test_neg_h, 
+            self.DataReader.test_neg_t, 
+            self.DataReader.test_neg_r
+        )
+        self.DataReader.test_triple_classification(res_pos, res_neg)
+
+
+
     def link_prediction(self):
         print("The total of test triple is %d" % (self.testTotal))
         for i in range(self.testTotal):
             sys.stdout.write("%d\r" % (i))
             sys.stdout.flush()
-            self.lib.getHeadBatch(self.test_h_addr, self.test_t_addr, self.test_r_addr)
+
+            self.DataReader.getHeadBatch()
             res = self.test_one_step(
-                self.testModel, self.test_h, self.test_t, self.test_r
+                self.testModel, 
+                self.DataReader.test_h,
+                self.DataReader.test_t, 
+                self.DataReader.test_r
             )
-            self.lib.testHead(res.__array_interface__["data"][0])
+            self.DataReader.testHead(res)
 
-            self.lib.getTailBatch(self.test_h_addr, self.test_t_addr, self.test_r_addr)
+            self.DataReader.getTailBatch()
             res = self.test_one_step(
-                self.testModel, self.test_h, self.test_t, self.test_r
+                self.testModel, 
+                self.DataReader.test_h,
+                self.DataReader.test_t, 
+                self.DataReader.test_r
             )
-            self.lib.testTail(res.__array_interface__["data"][0])
-        self.lib.test_link_prediction()
+            self.DataReader.testTail(res)
 
-    def triple_classification(self):
-        self.lib.getValidBatch(
-            self.valid_pos_h_addr,
-            self.valid_pos_t_addr,
-            self.valid_pos_r_addr,
-            self.valid_neg_h_addr,
-            self.valid_neg_t_addr,
-            self.valid_neg_r_addr,
-        )
-        res_pos = self.test_one_step(
-            self.testModel, self.valid_pos_h, self.valid_pos_t, self.valid_pos_r
-        )
-        res_neg = self.test_one_step(
-            self.testModel, self.valid_neg_h, self.valid_neg_t, self.valid_neg_r
-        )
-        self.lib.getBestThreshold(
-            self.relThresh_addr,
-            res_pos.__array_interface__["data"][0],
-            res_neg.__array_interface__["data"][0],
-        )
+        self.DataReader.test_link_prediction()
 
-        self.lib.getTestBatch(
-            self.test_pos_h_addr,
-            self.test_pos_t_addr,
-            self.test_pos_r_addr,
-            self.test_neg_h_addr,
-            self.test_neg_t_addr,
-            self.test_neg_r_addr,
-        )
-        res_pos = self.test_one_step(
-            self.testModel, self.test_pos_h, self.test_pos_t, self.test_pos_r
-        )
-        res_neg = self.test_one_step(
-            self.testModel, self.test_neg_h, self.test_neg_t, self.test_neg_r
-        )
-        self.lib.test_triple_classification(
-            self.relThresh_addr,
-            res_pos.__array_interface__["data"][0],
-            res_neg.__array_interface__["data"][0],
-        )
+
+
+    # ================================数据分析部分==================================
+
+
+
+
+    def analysis_link_prediction(self):
+        print("The total of test triple is %d" % (self.testTotal))
+        bad_list = []
+
+        # self.testTotal = 200 # 临时设定
+
+        for i in range(self.testTotal):
+            sys.stdout.write("%d\r" % (i))
+            sys.stdout.flush()
+
+            self.DataReader.getHeadBatch()
+            res = self.test_one_step(
+                self.testModel, 
+                self.DataReader.test_h,
+                self.DataReader.test_t, 
+                self.DataReader.test_r
+            )
+            self.DataReader.testHead(res)
+
+            self.DataReader.getTailBatch()
+            res = self.test_one_step(
+                self.testModel, 
+                self.DataReader.test_h,
+                self.DataReader.test_t, 
+                self.DataReader.test_r
+            )
+
+
+            # 数据处理,添加F范数
+            bad = self.DataReader.testTail(res)
+            h_embedding = self.testModel.getEntEmbedding(to_var(np.array([bad['h']], dtype=np.int64))).detach().numpy()
+            r_embedding = self.testModel.getRelEmbedding(to_var(np.array([bad['r']], dtype=np.int64))).detach().numpy()
+            t_embedding = self.testModel.getEntEmbedding(to_var(np.array([bad['t']], dtype=np.int64))).detach().numpy()
+            bad['h_norm_F'] = np.sqrt(np.sum(h_embedding * h_embedding))
+            bad['r_norm_F'] = np.sqrt(np.sum(r_embedding * r_embedding))
+            bad['t_norm_F'] = np.sqrt(np.sum(t_embedding * t_embedding))
+            bad_list.append(bad)
+
+        
+        bad_list.sort(key = lambda k : (k.get('h', 0), k.get('r', 0), k.get('t', 0)))
+        self.writeBad('/Users/zhangjiatao/Documents/EnhanceKGEmbedding/OpenKE-PyTorch/result.txt', bad_list)
+        self.DataReader.test_link_prediction()
+
+    def writeBad(self, file, bad_list):
+
+        with open(file, 'w') as f:
+
+            f.write('h h_freq h_norm_F r r_freq r_norm_F t t_freq t_norm_F rank\n')
+            for bad in bad_list:
+                line = str(bad['h']) + ' ' + str(bad['h_freq']) + ' ' + str(bad['h_norm_F']) + ' ' + str(bad['r']) + ' ' + str(bad['r_freq']) + ' ' + str(bad['r_norm_F']) + ' ' + str(bad['t']) + ' ' + str(bad['t_freq']) + ' ' + str(bad['t_norm_F']) + ' ' + str(bad['rank']) + '\n'
+                f.write(line)
+        f.close()
+
+
 
     def test(self):
         if self.test_link:
-            self.link_prediction()
+            self.analysis_link_prediction()
         if self.test_triple:
             self.triple_classification()

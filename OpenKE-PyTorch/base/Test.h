@@ -26,10 +26,12 @@ void initTest() {
 }
 extern "C"
 void getHeadBatch(INT *ph, INT *pt, INT *pr) {
+    // printf("[INFO] Test.h getHeadBatch(): lastHead: %ld \n", lastHead);
     for (INT i = 0; i < entityTotal; i++) {
         ph[i] = i;
         pt[i] = testList[lastHead].t;
         pr[i] = testList[lastHead].r;
+        // printf("[INFO] h: %ld, t: %ld, r: %ld\n", ph[i], pt[i], pr[i]);
     }
 }
 
@@ -42,22 +44,31 @@ void getTailBatch(INT *ph, INT *pt, INT *pr) {
     }
 }
 
+
 extern "C"
 void testHead(REAL *con) {
+    // 获取正例
     INT h = testList[lastHead].h;
     INT t = testList[lastHead].t;
     INT r = testList[lastHead].r;
+
+    // 获取对于关系r的头实体限制列表的范围
     INT lef = head_lef[r], rig = head_rig[r];
 
+    // 获取正例的分数
     REAL minimal = con[h];
-    INT l_s = 0;
-    INT l_filter_s = 0;
-    INT l_s_constrain = 0;
-    INT l_filter_s_constrain = 0;
+
+    // 统计在各种条件下分数小于正例，也就是说排名排在正例前的负例数量
+    INT l_s = 0; // 
+    INT l_filter_s = 0; //
+    INT l_s_constrain = 0; //
+    INT l_filter_s_constrain = 0; //
 
     for (INT j = 0; j < entityTotal; j++) {
+        // 对于每一个负例，获取其对应分数，并和正例分数进行对比
+        // 对比后统计正例所在排名
         if (j != h) {
-            REAL value = con[j];
+            REAL value = con[j]; // 获取负例分数
             if (value < minimal) {
                 l_s += 1;
                 if (not _find(j, t, r))
@@ -75,6 +86,7 @@ void testHead(REAL *con) {
         }
     }
 
+    // 整体测试全局统计
     if (l_filter_s < 10) l_filter_tot += 1;
     if (l_s < 10) l_tot += 1;
     if (l_filter_s < 3) l3_filter_tot += 1;
@@ -89,15 +101,20 @@ void testHead(REAL *con) {
     if (l_filter_s_constrain < 1) l1_filter_tot_constrain += 1;
     if (l_s_constrain < 1) l1_tot_constrain += 1;
 
+    // 计算该样本正例的rank
     l_filter_rank += (l_filter_s+1);
     l_rank += (1+l_s);
-    l_filter_reci_rank += 1.0/(l_filter_s+1);
-    l_reci_rank += 1.0/(l_s+1);
+    l_filter_reci_rank += 1.0/(l_filter_s+1); // 倒排 1 / rank
+    l_reci_rank += 1.0/(l_s+1); 
 
     l_filter_rank_constrain += (l_filter_s_constrain+1);
     l_rank_constrain += (1+l_s_constrain);
     l_filter_reci_rank_constrain += 1.0/(l_filter_s_constrain+1);
     l_reci_rank_constrain += 1.0/(l_s_constrain+1);
+
+    if (l_rank > 1000){
+        printf("[INFO] bad case :(%ld, %ld, %ld), rank: %ld\n", h, t, r, long(l_rank));
+    }
 
     lastHead++;
 

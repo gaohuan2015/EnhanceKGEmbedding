@@ -4,7 +4,7 @@ import json
 import os 
 os.environ['CUDA_VISIBLE_DEVICES']='6'
 con = config.Config()
-con.set_in_path("./benchmarks/FB13/")
+con.set_in_path("./benchmarks/FB15K/")
 con.set_work_threads(8)
 con.set_train_times(1000)
 con.set_nbatches(100)	

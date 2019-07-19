@@ -41,4 +41,11 @@ class TransE(Model):
 		t = self.ent_embeddings(self.batch_t)
 		r = self.rel_embeddings(self.batch_r)
 		score = self._calc(h, t, r)
-		return score.cpu().data.numpy()	
+		# print('[INFO] TranE.predict(): score shape is:', score.cpu().data.numpy())
+		return score.cpu().data.numpy()
+
+	def getEntEmbedding(self, ent_idx):
+		return self.ent_embeddings(ent_idx)
+
+	def getRelEmbedding(self, rel_idx):
+		return self.rel_embeddings(rel_idx)
